@@ -17,8 +17,6 @@
 ### ✍️ Random Dev Quote
 ![](https://quotes-github-readme.vercel.app/api?type=horizontal&theme=radical)
 
-<img width="70%" src="https://raw.githubusercontent.com/smalik21/rishabhsharawat15/output/snake.svg" alt="Snake animation" />
-
 ---
 [![](https://visitcount.itsvg.in/api?id=ImRi8&icon=0&color=0)](https://visitcount.itsvg.in)
 
