@@ -1,0 +1,408 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>rishabh@sharawat — terminal</title>
+<meta name="description" content="Interactive terminal portfolio of Rishabh Sharawat, full-stack developer. Type help to get started.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0d1117; --panel: #010409; --border: #30363d; --text: #c9d1d9; --muted: #7d8590;
+    --key: #ffa657; --value: #a5d6ff; --prompt: #3fb950; --accent: #58a6ff; --err: #ff7b72; --hl: #d2a8ff;
+  }
+  :root[data-theme="light"] {
+    --bg: #f6f8fa; --panel: #ffffff; --border: #d0d7de; --text: #24292f; --muted: #6e7781;
+    --key: #953800; --value: #0a3069; --prompt: #1a7f37; --accent: #0969da; --err: #cf222e; --hl: #8250df;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    background: var(--panel); color: var(--text);
+    font: 15px/1.55 "JetBrains Mono", Consolas, "Courier New", monospace;
+    display: flex; justify-content: center; padding: 24px 16px;
+  }
+  .window {
+    width: 100%; max-width: 980px; min-width: 0; height: calc(100vh - 48px); min-height: 420px;
+    background: var(--bg); border: 1px solid var(--border); border-radius: 12px;
+    display: flex; flex-direction: column; overflow: hidden;
+    box-shadow: 0 16px 48px rgba(0,0,0,.35);
+  }
+  .bar {
+    display: flex; align-items: center; gap: 8px; padding: 10px 14px;
+    border-bottom: 1px solid var(--border); color: var(--muted); font-size: 13px; user-select: none;
+  }
+  .dot { width: 12px; height: 12px; border-radius: 50%; }
+  .bar .title { flex: 1; text-align: center; margin-right: 52px; }
+  #screen { flex: 1; min-width: 0; overflow-y: auto; overflow-x: hidden; padding: 16px 18px 24px; cursor: text; }
+  .line { white-space: pre-wrap; word-break: break-word; min-height: 1.55em; }
+  .prompt { color: var(--prompt); } .path { color: var(--value); }
+  .k { color: var(--key); } .v { color: var(--value); } .m { color: var(--muted); }
+  .a { color: var(--accent); } .e { color: var(--err); } .h { color: var(--hl); } .b { font-weight: 700; }
+  a { color: var(--accent); text-decoration: underline; text-underline-offset: 3px; }
+  a:hover { color: var(--hl); }
+  .cmd { color: var(--key); cursor: pointer; border-bottom: 1px dashed var(--muted); }
+  .cmd:hover { color: var(--hl); }
+  .input-row { display: flex; white-space: pre; }
+  #input {
+    flex: 1; min-width: 0; background: transparent; border: 0; outline: 0; padding: 0;
+    color: var(--text); font: inherit; caret-color: var(--text);
+  }
+  .banner {
+    margin: 4px 0 0; color: var(--accent); font-weight: 700; line-height: 1.05;
+    font-size: clamp(7px, 2.2vw, 15px); overflow-x: auto; font-family: inherit;
+  }
+  .card { max-width: 100%; height: auto; border-radius: 10px; margin: 6px 0; display: block; }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; padding: 10px 14px; border-top: 1px solid var(--border); }
+  .chips button {
+    font: inherit; font-size: 12.5px; color: var(--text); background: transparent;
+    border: 1px solid var(--border); border-radius: 999px; padding: 4px 12px; cursor: pointer;
+  }
+  .chips button:hover { border-color: var(--accent); color: var(--accent); }
+  @media (max-width: 600px) {
+    body { padding: 0; font-size: 13px; }
+    .window { height: 100vh; border-radius: 0; border: 0; }
+    .bar .title { margin-right: 0; }
+  }
+</style>
+</head>
+<body>
+<div class="window">
+  <div class="bar">
+    <span class="dot" style="background:#ff5f57"></span>
+    <span class="dot" style="background:#febc2e"></span>
+    <span class="dot" style="background:#28c840"></span>
+    <span class="title">rishabh@sharawat: ~</span>
+  </div>
+  <div id="screen" aria-live="polite">
+    <div id="out"></div>
+    <div class="input-row">
+      <span><span class="prompt">rishabh@sharawat</span>:<span class="path">~</span>$ </span>
+      <input id="input" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="Terminal command">
+    </div>
+  </div>
+  <div class="chips" id="chips" aria-label="Quick commands"></div>
+</div>
+
+<script>
+const USER = "rishabhsharawat15";
+const LINKS = {
+  portfolio: "https://rishabhsharawat.netlify.app/",
+  github: "https://github.com/rishabhsharawat15",
+  linkedin: "https://www.linkedin.com/in/rishabh-sharawat-981b501b7/",
+  twitter: "https://twitter.com/rishabhsh15",
+  instagram: "https://www.instagram.com/rishabh_sharawat_/",
+  resume: "https://rishabhsharawat.netlify.app/static/media/RishabhSharawat.5b985e70c143c9d43836.pdf",
+};
+
+const out = document.getElementById("out");
+const input = document.getElementById("input");
+const screen = document.getElementById("screen");
+
+// ── tiny markup: [k]orange[/] [v]blue[/] [m]muted[/] [a]accent[/] [h]purple[/] [b]bold[/],
+//    {cmd:sudo expert} = clickable command, <a> tags allowed for links
+const esc = s => s.replace(/&/g, "&amp;").replace(/</g, "&lt;");
+function fmt(s) {
+  return s
+    .replace(/\[(k|v|m|a|e|h|b)\]/g, '<span class="$1">').replace(/\[\/\]/g, "</span>")
+    .replace(/\{cmd:([^}]+)\}/g, (_, c) => `<span class="cmd" data-cmd="${c}">${c}</span>`);
+}
+const link = (url, label) => `<a href="${url}" target="_blank" rel="noopener">${label || url.replace(/^https?:\/\/(www\.)?/, "").replace(/\/$/, "")}</a>`;
+
+function print(text = "", raw = false) {
+  for (const l of String(text).split("\n")) {
+    const d = document.createElement("div");
+    d.className = "line";
+    d.innerHTML = raw ? l : fmt(l);
+    out.appendChild(d);
+  }
+  screen.scrollTop = screen.scrollHeight;
+}
+const title = t => `[h][b]── ${t} [/][m]${"─".repeat(Math.max(4, 46 - t.length))}[/][/]`;
+const row = (k, v, w = 14) => `  [k]${k.padEnd(w)}[/] ${v}`;
+
+// ── commands ────────────────────────────────────────────────────────────────
+const COMMANDS = {
+  help: {
+    desc: "list all commands",
+    run() {
+      print(title("Interact with me"));
+      print("[m]Type a command (or click one). The 'sudo' is optional. Tab autocompletes, ↑/↓ for history.[/]\n");
+      for (const [name, c] of Object.entries(COMMANDS)) {
+        if (c.hidden) continue;
+        const pad = " ".repeat(Math.max(1, 20 - name.length));
+        print(`  [a]$[/] {cmd:${name}}${pad}[m]# ${c.desc}[/]`);
+      }
+    },
+  },
+  whoami: {
+    desc: "who I am, in one line",
+    run() {
+      print("[b]Rishabh Sharawat[/] — [v]Full-Stack Developer[/] from Noida, India.");
+      print("Currently building products at [k]Vebholic[/]. B.Tech CSE from JIIT Noida.");
+      print("I fell in love with programming and I'm fluent in the classics: C++, JavaScript and Python.");
+      print("I love building new web technologies & products, and I'm drawn to data science & analytics.\n");
+      print("[m]Next:[/] {cmd:sudo expert} · {cmd:sudo experience} · {cmd:sudo projects}");
+    },
+  },
+  "sudo expert": {
+    desc: "skills I'm expert in",
+    run() {
+      print(title("What I'm expert in"));
+      print(row("Core", "[b]React · Next.js · Node.js · Express · MongoDB[/]"));
+      print(row("Languages", "JavaScript, TypeScript, Python, C/C++, SQL, HTML/CSS"));
+      print(row("Front-end", "React, Next.js, Vue.js, Material-UI, jQuery, Canvas"));
+      print(row("Back-end", "Node.js, Express, Django, Flask, FastAPI, REST APIs"));
+      print(row("Databases", "MongoDB, MySQL, PostgreSQL, Redis"));
+      print(row("Data / ML", "pandas, NumPy, Matplotlib, Streamlit, OpenCV"));
+      print(row("Cloud & CMS", "AWS, GCP, Vercel, Netlify, WordPress"));
+      print(row("Tools", "Git, GitHub, VS Code, Chrome Extensions, Figma, Canva"));
+      print("\n[m]Day to day:[/] full-stack web apps end to end — UI, API, database, deploy.");
+    },
+  },
+  "sudo experience": {
+    desc: "where I've worked",
+    run() {
+      print(title("Experience"));
+      print("[k][b]Full Stack Developer[/][/] @ [v]Vebholic[/]   [m]Nov 2023 – Present · Remote, India[/]");
+      print("  • Built and maintain a [b]CRM+[/] system, fixing bugs daily and adapting to customer needs —");
+      print("    improved user satisfaction by [b]40%[/].");
+      print("  • Built a [b]React PDF editor[/] on Canvas with complex text & image manipulation, tuned for speed.");
+      print("  • Co-led a [b]Chrome extension[/] that captures and guides the UI experience (à la React Joyride)");
+      print("    for user onboarding and in-app navigation.");
+      print("  • Built a full-stack app with React, MongoDB and Redis to manage the database of product flows.");
+      print("  • Built a documentation UI with [b]FumaDocs + Next.js[/] for fast, intuitive docs access.\n");
+      print("[k][b]Application Developer[/][/] @ [v]WORF[/]   [m]May 2023 – Oct 2023 · Noida, India[/]");
+      print(`  • Shipped two WordPress sites — ${link("https://iwex.in", "iwex.in")} and ${link("https://bossclif.studio", "bossclif.studio")} — 200+ users, 50+ daily views;`);
+      print("    managed the back-end CMS and built custom themes.");
+      print("  • Built a Python chatbot with Streamlit + Matplotlib to visualise site data and engagement.");
+      print("  • Sharpened my Vue.js skills building projects under expert mentorship.");
+    },
+  },
+  "sudo projects": {
+    desc: "things I've built",
+    run() {
+      print(title("Projects"));
+      const P = [
+        ["Gym Portal", "React, TypeScript, Node, Express, MongoDB", "Digital gym management for owners, trainers & members — replaces paper receipts and manual updates.", null],
+        ["Duty Munshi", "React, Vite, Express, Node, MongoDB", "Streamlines police duty scheduling — cuts human error and corruption, gives officers time with family.", "https://github.com/rishabhsharawat15/DUTY-MUNSHI-JS/tree/master"],
+        ["Object Detection", "Python, OpenCV, pandas, Streamlit", "Detects objects entering the frame, emails a photo of them, and plots arrivals/departures.", "https://github.com/rishabhsharawat15/objectdetection"],
+        ["IN NEED", "Web, e-commerce", "Sells near-expiry products at the lowest cost to people who need them.", "https://github.com/rishabhsharawat15/INNEED"],
+        ["Chatbot", "Python, NLP", "Interactive conversational assistant (in progress).", "https://github.com/rishabhsharawat15/chatbot"],
+        ["Keeper App", "React", "Notepad-style app to create, edit and organise notes.", "https://github.com/rishabhsharawat15/KEEPER-APP"],
+        ["To-Do App", "React, EJS, Python", "A focused task manager to capture, organise and complete tasks.", "https://github.com/rishabhsharawat15/My-todo"],
+      ];
+      for (const [name, tech, d, url] of P) {
+        print(`[k][b]${name}[/][/]  [m]${tech}[/]`);
+        print(`  ${esc(d)}`);
+        if (url) print(`  ↳ ${link(url)}`, false);
+        print("");
+      }
+      print(`[m]More on GitHub:[/] ${link(LINKS.github)}`);
+    },
+  },
+  "sudo education": {
+    desc: "where I studied",
+    run() {
+      print(title("Education"));
+      print("[k][b]Jaypee Institute of Information Technology[/][/], Noida   [m]2020 – 2024[/]");
+      print("  B.Tech, Computer Science & Engineering\n");
+      print("[k][b]Bal Bharati Public School[/][/], Noida   [m]2019 – 2020[/]");
+      print("  Higher Secondary — 92.5%");
+    },
+  },
+  "sudo achievements": {
+    desc: "certs & milestones",
+    run() {
+      print(title("Achievements"));
+      print("  🏆 [b]400+[/] problems solved on LeetCode");
+      print("  🥷 [b]Samurai[/] rank on Coding Ninjas");
+      print("  🦈 [b]Pull Shark[/] badge on GitHub");
+      print("  🎓 General Secretary, JIIT\n");
+      print(title("Certifications"));
+      print("  • Python Masterclass — Udemy");
+      print("  • Web Development Bootcamp — Udemy");
+      print("  • SQL");
+    },
+  },
+  "sudo stats": {
+    desc: "live GitHub stats",
+    async run() {
+      print("[m]Fetching live stats from GitHub…[/]");
+      try {
+        const [u, repos] = await Promise.all([
+          fetch(`https://api.github.com/users/${USER}`).then(r => r.ok ? r.json() : Promise.reject(r.status)),
+          fetch(`https://api.github.com/users/${USER}/repos?per_page=100&sort=pushed`).then(r => r.ok ? r.json() : Promise.reject(r.status)),
+        ]);
+        const own = repos.filter(r => !r.fork);
+        const stars = own.reduce((s, r) => s + r.stargazers_count, 0);
+        const langs = {};
+        own.forEach(r => r.language && (langs[r.language] = (langs[r.language] || 0) + 1));
+        const top = Object.entries(langs).sort((a, b) => b[1] - a[1]).slice(0, 5);
+        const total = top.reduce((s, [, n]) => s + n, 0) || 1;
+        const since = new Date(u.created_at);
+        const yrs = ((Date.now() - since) / 3.156e10).toFixed(1);
+        print(title("GitHub Stats (live)"));
+        print(row("Public repos", `[v]${u.public_repos}[/]`));
+        print(row("Stars earned", `[v]${stars}[/]`));
+        print(row("Followers", `[v]${u.followers}[/]   [m]following ${u.following}[/]`));
+        print(row("On GitHub", `[v]${yrs} years[/]   [m]since ${since.toLocaleDateString("en-IN", { month: "short", year: "numeric" })}[/]`));
+        print("\n  [k]Top languages[/]");
+        for (const [l, n] of top) {
+          const pct = Math.round(n / total * 100);
+          print(`  ${l.padEnd(12)} [a]${"█".repeat(Math.max(1, Math.round(pct / 4)))}[/] [m]${pct}%[/]`);
+        }
+        print("\n  [k]Recently active[/]");
+        for (const r of own.slice(0, 3)) print(`  • ${link(r.html_url, r.name)} [m]${r.language || ""}[/]`);
+      } catch (e) {
+        print(`[e]Couldn't reach GitHub right now (${e}). Try again in a minute, or visit[/] ${link(LINKS.github)}`);
+      }
+    },
+  },
+  "sudo connect": {
+    desc: "all my links",
+    run() {
+      print(title("Let's connect"));
+      print(row("Portfolio", link(LINKS.portfolio)));
+      print(row("LinkedIn", link(LINKS.linkedin)));
+      print(row("GitHub", link(LINKS.github)));
+      print(row("Twitter / X", link(LINKS.twitter, "@rishabhsh15")));
+      print(row("Instagram", link(LINKS.instagram, "@rishabh_sharawat_")));
+      print(row("Resume", link(LINKS.resume, "download PDF")));
+    },
+  },
+  "sudo resume": {
+    desc: "download my CV",
+    run() {
+      print(`Opening my resume… if nothing happens, ${link(LINKS.resume, "click here")}.`);
+      window.open(LINKS.resume, "_blank", "noopener");
+    },
+  },
+  "sudo hire": {
+    desc: "why work with me",
+    run() {
+      print(title("Why work with me"));
+      print("  ✓ [b]Full-stack, end to end[/] — React/Next.js front-ends, Node/Express APIs, MongoDB/SQL/Redis.");
+      print("  ✓ [b]Production experience[/] — a CRM+ used by real customers, a Canvas PDF editor, a Chrome extension.");
+      print("  ✓ [b]User-focused[/] — my CRM work raised user satisfaction by 40%.");
+      print("  ✓ [b]Strong fundamentals[/] — 400+ LeetCode problems, C++ / Python / JavaScript.");
+      print("  ✓ [b]Lead & collaborate[/] — co-led an extension team; General Secretary at JIIT.\n");
+      print("Sounds like a fit? → {cmd:sudo connect}");
+    },
+  },
+  neofetch: {
+    desc: "show my profile card",
+    run() {
+      const theme = document.documentElement.dataset.theme === "light" ? "light" : "dark";
+      print(`<img class="card" src="${theme}_mode.svg?${Date.now()}" alt="Rishabh Sharawat's profile card">`, true);
+    },
+  },
+  theme: {
+    desc: "toggle light / dark",
+    run() {
+      const el = document.documentElement;
+      el.dataset.theme = el.dataset.theme === "light" ? "dark" : "light";
+      try { localStorage.setItem("theme", el.dataset.theme); } catch (e) {}
+      print(`[m]Switched to ${el.dataset.theme} theme.[/]`);
+    },
+  },
+  history: {
+    desc: "commands you've typed",
+    run() { hist.forEach((h, i) => print(`  [m]${String(i + 1).padStart(3)}[/]  ${esc(h)}`)); },
+  },
+  clear: { desc: "wipe the screen", run() { out.innerHTML = ""; } },
+  exit: {
+    desc: "back to my GitHub",
+    run() { print("[m]Bye! 👋 Taking you back to GitHub…[/]"); setTimeout(() => location.href = LINKS.github, 700); },
+  },
+
+  // hidden easter eggs
+  ls: { hidden: true, run() { print("[v]about.txt  experience/  projects/  skills.json  resume.pdf[/]  [m](try 'help')[/]"); } },
+  date: { hidden: true, run() { print(new Date().toString()); } },
+  pwd: { hidden: true, run() { print("/home/rishabh"); } },
+  sudo: { hidden: true, run() { print("[m]sudo what? Try[/] {cmd:sudo expert}, {cmd:sudo experience} or {cmd:help}."); } },
+  "sudo rm -rf /": { hidden: true, run() { print("[e]Nice try. 😄 Permission denied: this portfolio is load-bearing.[/]"); } },
+  "sudo make me a sandwich": { hidden: true, run() { print("🥪 Okay."); } },
+  coffee: { hidden: true, run() { print("☕ Brewing… fuel for the next commit."); } },
+};
+
+// aliases: "expert" == "sudo expert", plus a few natural ones
+const ALIASES = { about: "whoami", skills: "sudo expert", contact: "sudo connect", cv: "sudo resume", "?": "help", man: "help", cls: "clear" };
+function resolve(raw) {
+  const c = raw.trim().toLowerCase().replace(/\s+/g, " ");
+  if (!c) return null;
+  if (COMMANDS[c]) return c;
+  if (ALIASES[c]) return ALIASES[c];
+  if (COMMANDS["sudo " + c]) return "sudo " + c;
+  const bare = c.replace(/^sudo /, "");
+  if (COMMANDS[bare]) return bare;
+  if (ALIASES[bare]) return ALIASES[bare];
+  return undefined;
+}
+
+// ── input handling ──────────────────────────────────────────────────────────
+const hist = [];
+let hi = 0;
+async function exec(raw) {
+  print(`<span class="prompt">rishabh@sharawat</span>:<span class="path">~</span>$ ${esc(raw)}`, true);
+  if (raw.trim()) { hist.push(raw); }
+  hi = hist.length;
+  const c = resolve(raw);
+  if (c === null) return;
+  if (c === undefined) {
+    print(`[e]command not found:[/] ${esc(raw.trim())}  [m]— type[/] {cmd:help} [m]to see what I can do.[/]`);
+  } else {
+    await COMMANDS[c].run();
+  }
+  print("");
+}
+
+input.addEventListener("keydown", e => {
+  if (e.key === "Enter") { const v = input.value; input.value = ""; exec(v); }
+  else if (e.key === "ArrowUp") { if (hi > 0) input.value = hist[--hi]; e.preventDefault(); }
+  else if (e.key === "ArrowDown") { hi = Math.min(hist.length, hi + 1); input.value = hist[hi] || ""; e.preventDefault(); }
+  else if (e.key === "Tab") {
+    e.preventDefault();
+    const v = input.value.toLowerCase().trim();
+    const names = Object.keys(COMMANDS).filter(n => !COMMANDS[n].hidden);
+    const m = names.filter(n => n.startsWith(v) || n.startsWith("sudo " + v));
+    if (m.length === 1) input.value = m[0];
+    else if (m.length > 1) { print(`<span class="prompt">rishabh@sharawat</span>:<span class="path">~</span>$ ${esc(input.value)}`, true); print("[m]" + m.join("   ") + "[/]"); }
+  } else if (e.key === "l" && e.ctrlKey) { e.preventDefault(); out.innerHTML = ""; }
+});
+document.addEventListener("click", e => {
+  const c = e.target.closest("[data-cmd]");
+  if (c) { exec(c.dataset.cmd); }
+  if (!window.getSelection().toString() && !e.target.closest("a")) input.focus();
+});
+
+// quick-command chips (handy on phones)
+const chips = document.getElementById("chips");
+["help", "whoami", "sudo expert", "sudo experience", "sudo projects", "sudo stats", "sudo connect"].forEach(c => {
+  const b = document.createElement("button");
+  b.textContent = c; b.dataset.cmd = c; chips.appendChild(b);
+});
+
+// boot
+try { const t = localStorage.getItem("theme"); if (t) document.documentElement.dataset.theme = t; } catch (e) {}
+const banner = document.createElement("pre");
+banner.className = "banner";
+banner.setAttribute("aria-label", "RISHABH");
+banner.textContent = `
+  ██████  ██ ███████ ██   ██  █████  ██████  ██   ██ 
+  ██   ██ ██ ██      ██   ██ ██   ██ ██   ██ ██   ██ 
+  ██████  ██ ███████ ███████ ███████ ██████  ███████ 
+  ██   ██ ██      ██ ██   ██ ██   ██ ██   ██ ██   ██ 
+  ██   ██ ██ ███████ ██   ██ ██   ██ ██████  ██   ██ 
+                                                     `;
+out.appendChild(banner);
+print("\nWelcome! I'm [b]Rishabh Sharawat[/], a full-stack developer. 👋");
+print("Type {cmd:help} to see what you can ask me, or try {cmd:sudo expert}, {cmd:sudo experience}, {cmd:sudo connect}.\n");
+const q = new URLSearchParams(location.search).get("cmd");
+if (q) exec(q);
+input.focus();
+</script>
+</body>
+</html>

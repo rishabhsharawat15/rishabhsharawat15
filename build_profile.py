@@ -13,7 +13,6 @@ background and `rembg` is installed (pip install rembg), it is removed automatic
 
 Requires: pip install pillow
 """
-import colorsys
 import json
 import os
 import urllib.request
@@ -51,12 +50,31 @@ CONFIG = {
         ],
     ],
     "contact": [
-        ("Email", os.environ.get("CONTACT_EMAIL", "set CONTACT_EMAIL")),
+        ("Email", os.environ.get("CONTACT_EMAIL")),   # line is hidden when unset
         ("Portfolio", "rishabhsharawat.netlify.app"),
         ("LinkedIn", "rishabh-sharawat-981b501b7"),
+        ("Twitter", "@rishabhsh15"),
         ("Instagram", "rishabh_sharawat_"),
     ],
 }
+
+# Commands advertised on the card. Keep in sync with COMMANDS in index.html,
+# which is the live terminal that actually runs them.
+HELP = [
+    ("whoami", "who I am, in one line"),
+    ("sudo expert", "skills I'm expert in"),
+    ("sudo experience", "where I've worked"),
+    ("sudo projects", "things I've built"),
+    ("sudo education", "where I studied"),
+    ("sudo achievements", "certs & milestones"),
+    ("sudo stats", "live GitHub stats"),
+    ("sudo connect", "all my links"),
+    ("sudo resume", "download my CV"),
+    ("sudo hire", "why work with me"),
+    ("neofetch", "show this card again"),
+    ("clear", "wipe the screen"),
+]
+TERMINAL_URL = f"{USERNAME}.github.io/{USERNAME}"
 # ────────────────────────────────────────────────────────────────────────────
 
 # ASCII portrait geometry (small font = more detail)
@@ -130,17 +148,12 @@ def ascii_cells():
 
 
 def tint(rgb, theme):
-    """Adjust photo colour so it stays readable on the theme background."""
-    h, s, v = colorsys.rgb_to_hsv(*(c / 255 for c in rgb))
-    if theme == "dark":
-        v = 0.30 + v * 0.75
-        s = min(s * 1.35, 1)
-    else:
-        v = 0.05 + v * 0.55
-        s = min(s * 1.3, 1)
-    r, g, b = colorsys.hsv_to_rgb(h, s, v)
-    q = lambda c: min(int(round(c * 255 / 17)) * 17, 255)  # quantise -> fewer spans
-    return "#%02x%02x%02x" % (q(r), q(g), q(b))
+    """Black and white: map the pixel's brightness to a grey that reads on the theme background."""
+    r, g, b = rgb
+    lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255
+    v = 0.32 + lum * 0.68 if theme == "dark" else 0.06 + lum * 0.56
+    q = min(int(round(v * 255 / 17)) * 17, 255)  # quantise -> fewer spans
+    return "#%02x%02x%02x" % (q, q, q)
 
 
 # ── GitHub stats ─────────────────────────────────────────────────────────────
@@ -148,11 +161,10 @@ CACHE = HERE / "stats_cache.json"
 
 
 def gh(url, token):
-    req = urllib.request.Request(url, headers={
-        "Authorization": f"Bearer {token}",
-        "Accept": "application/vnd.github+json",
-        "User-Agent": USERNAME,
-    })
+    headers = {"Accept": "application/vnd.github+json", "User-Agent": USERNAME}
+    if token:  # optional: public stats also work unauthenticated (lower rate limit)
+        headers["Authorization"] = f"Bearer {token}"
+    req = urllib.request.Request(url, headers=headers)
     with urllib.request.urlopen(req, timeout=30) as r:
         return json.load(r)
 
@@ -160,8 +172,6 @@ def gh(url, token):
 def fetch_stats():
     cached = json.loads(CACHE.read_text()) if CACHE.exists() else {}
     token = os.environ.get("GITHUB_TOKEN")
-    if not token:
-        return cached
     try:
         api = "https://api.github.com"
         user = gh(f"{api}/users/{USERNAME}", token)
@@ -225,7 +235,7 @@ def build_info(stats):
             lines.append(kv("Uptime", uptime(stats), INFO_WIDTH))
         lines += [kv(k, v, INFO_WIDTH) for k, v in section]
     lines += [[], title("Contact")]
-    lines += [kv(k, v, INFO_WIDTH) for k, v in CONFIG["contact"]]
+    lines += [kv(k, v, INFO_WIDTH) for k, v in CONFIG["contact"] if v]
     lines += [[], title("GitHub Stats")]
     g = lambda k: stats.get(k, "—")
     half = (INFO_WIDTH - 3) // 2
@@ -242,9 +252,39 @@ def anim(xml):
 def render(theme, cells, info):
     t = THEMES[theme]
     ascii_h = A_ROWS * A_LH
-    n_info = len(info) + 2                       # + blank + prompt line
-    height = int(max(ascii_h, n_info * I_LH) + 50)
     width = int(I_X + INFO_WIDTH * I_CW + 25)
+    full_chars = int((width - 2 * A_X) / I_CW)
+    col_chars = (full_chars - 4) // 2
+    col2_x = A_X + (col_chars + 4) * I_CW
+
+    # ── bottom "terminal" section: `help` typed at the prompt, then the command list
+    prompt = [("prompt", CONFIG["header"]), ("text", ":"), ("value", "~"), ("text", "$ ")]
+    pw = sum(len(s) for _, s in prompt)
+
+    def cmd(c, d):
+        return [("prompt", "$ "), ("key", c.ljust(19)), ("dots", "# "), ("text", d)]
+
+    rows = [[(A_X, prompt + [("text", "help")])],
+            [(A_X, [("dots", "# "), ("value", "Interact with me!"),
+                    ("text", " Click the card to open my live terminal and type:")])],
+            []]
+    half = (len(HELP) + 1) // 2
+    for i in range(half):
+        row = [(A_X, cmd(*HELP[i]))]
+        if i + half < len(HELP):
+            row.append((col2_x, cmd(*HELP[i + half])))
+        rows.append(row)
+    rows += [[], [(A_X, prompt)]]
+
+    top_end = max(A_Y + ascii_h, I_Y + len(info) * I_LH)
+    sep_y = top_end + 6
+    B_Y = sep_y + 32
+    height = int(B_Y + (len(rows) - 1) * I_LH + 24)
+
+    info_t = lambda i: 1.6 + i * 0.11
+    bot_t0 = info_t(len(info)) + 0.5
+    bot_t = lambda i: bot_t0 + (0 if i == 0 else 0.9 + i * 0.12)
+
     font = "ConsolasFallback,Consolas,'Courier New',monospace"
     o = [f'<svg xmlns="http://www.w3.org/2000/svg" xml:space="preserve" font-family="{font}" '
          f'width="{width}px" height="{height}px" viewBox="0 0 {width} {height}">',
@@ -259,14 +299,20 @@ def render(theme, cells, info):
          f'<stop offset=".5" stop-color="{t["scan"]}" stop-opacity=".22"/>'
          f'<stop offset="1" stop-color="{t["scan"]}" stop-opacity="0"/></linearGradient>']
 
-    # one clip rect per info line for the typing effect
+    def clip(cid, x, y, w0, w1, begin, dur):
+        o.append(f'<clipPath id="{cid}"><rect x="{x - 5}" y="{y - I_FONT}" height="{I_LH + 4}" width="{w0}">'
+                 f'<animate attributeName="width" from="{w0}" to="{w1}" '
+                 f'begin="{begin:.2f}s" dur="{dur}s" fill="freeze"/></rect></clipPath>')
+
     if not STATIC:
-        for i in range(n_info):
-            y = I_Y + i * I_LH - I_FONT
-            begin = 1.6 + i * 0.11
-            o.append(f'<clipPath id="c{i}"><rect x="{I_X - 5}" y="{y}" height="{I_LH + 4}" width="0">'
-                     f'<animate attributeName="width" from="0" to="{INFO_WIDTH * I_CW + 20}" '
-                     f'begin="{begin:.2f}s" dur="0.35s" fill="freeze"/></rect></clipPath>')
+        for i in range(len(info)):
+            clip(f"c{i}", I_X, I_Y + i * I_LH, 0, INFO_WIDTH * I_CW + 20, info_t(i), 0.35)
+        for i in range(len(rows)):
+            y = B_Y + i * I_LH
+            if i == 0:   # prompt pops in, then "help" is typed letter by letter
+                clip("b0", A_X, y, 0, (pw + 4) * I_CW + 10, bot_t(0), 0.9)
+            else:
+                clip(f"b{i}", A_X, y, 0, width, bot_t(i), 0.35)
     o.append("</defs>")
     o.append(f'<rect x="1" y="1" width="{width - 2}" height="{height - 2}" rx="15" fill="{t["bg"]}" stroke="{t["border"]}"/>')
 
@@ -300,25 +346,33 @@ def render(theme, cells, info):
                  f'<animate attributeName="y" values="{A_Y - 60};{A_Y + ascii_h}" begin="1.6s" dur="3.5s" repeatCount="indefinite"/>'
                  f'<animate attributeName="opacity" from="0" to="1" begin="1.6s" dur="0.1s" fill="freeze"/></rect>')
 
-    # info lines, typed out one after another
-    o.append(f'<g font-size="{I_FONT}px">')
-    prompt = [("prompt", CONFIG["header"]), ("text", ":"), ("value", "~"), ("text", "$ ")]
-    all_lines = info + [[], prompt]
-    for i, parts in enumerate(all_lines):
-        if not parts:
-            continue
+    def line(x, y, parts, clip_id):
         chars = sum(len(s) for _, s in parts)
         segs = "".join(f'<tspan class="{c}">{escape(s)}</tspan>' for c, s in parts)
-        y = I_Y + i * I_LH
         tl = f' textLength="{chars * I_CW:.0f}" lengthAdjust="spacing"' if chars > 4 else ""
-        clip = "" if STATIC else f' clip-path="url(#c{i})"'
-        o.append(f'<text x="{I_X}" y="{y}"{tl}{clip}>{segs}</text>')
-        if parts is prompt:
-            cx = I_X + chars * I_CW
+        cp = "" if STATIC else f' clip-path="url(#{clip_id})"'
+        o.append(f'<text x="{x:.0f}" y="{y}"{tl}{cp}>{segs}</text>')
+        return chars
+
+    # info lines, typed out one after another
+    o.append(f'<g font-size="{I_FONT}px">')
+    for i, parts in enumerate(info):
+        if parts:
+            line(I_X, I_Y + i * I_LH, parts, f"c{i}")
+
+    # separator + terminal section
+    o.append(f'<line x1="{A_X}" y1="{sep_y}" x2="{width - A_X}" y2="{sep_y}" stroke="{t["border"]}" stroke-dasharray="4 4"/>')
+    for i, row in enumerate(rows):
+        y = B_Y + i * I_LH
+        for x, parts in row:
+            chars = line(x, y, parts, f"b{i}")
+        if i == len(rows) - 1:   # blinking cursor after the final prompt
+            cx = A_X + chars * I_CW
             blink = anim(f'<animate attributeName="opacity" values="1;1;0;0" keyTimes="0;.5;.5;1" '
-                         f'dur="1s" begin="{1.6 + i * 0.11 + 0.4:.2f}s" repeatCount="indefinite"/>')
+                         f'dur="1s" begin="{bot_t(i) + 0.3:.2f}s" repeatCount="indefinite"/>')
+            hidden = ' opacity="0"'
             o.append(f'<rect x="{cx:.0f}" y="{y - I_FONT + 3}" width="{I_CW:.0f}" height="{I_FONT}" '
-                     f'fill="{t["text"]}"{"" if STATIC else " opacity=\"0\""}>{blink}</rect>')
+                     f'fill="{t["text"]}"{"" if STATIC else hidden}>{blink}</rect>')
     o.append("</g>\n</svg>")
     return "\n".join(o)
 
